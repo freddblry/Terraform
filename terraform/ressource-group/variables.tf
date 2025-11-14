@@ -39,7 +39,7 @@ variable "project_name" {
 
 variable "tags" {
   description = "Additional tags to apply to resources"
-  type        = map(string)
+  type        = string
   default     = {}
 }
 
