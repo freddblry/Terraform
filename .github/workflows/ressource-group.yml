@@ -57,6 +57,7 @@ jobs:
         working-directory: ./terraform/ressource-group
 
   terraform-tfsec-scan:
+    needs: terraform-validate
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -79,7 +80,7 @@ jobs:
           path: tfsec-result.json
 
   terraform-plan:
-    needs: [terraform-validate, terraform-tfsec-scan]
+    needs: terraform-tfsec-scan
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -105,7 +106,9 @@ jobs:
       - name: Terraform plan
         id: plan
         run: |
-          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example"
+          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" \
+            -var="resource_group_name=rg-${{ matrix.environment }}-example"
+          terraform show -no-color tfplan > plan.txt
         working-directory: ./terraform/ressource-group
 
       - name: Upload Terraform plan
@@ -122,13 +125,16 @@ jobs:
           header: terraform plan ${{ matrix.environment }}
           message: |
             ```
-            ${{ steps.plan.outputs.stdout }}
+            $(cat ./terraform/ressource-group/plan.txt)
             ```
 
   terraform-apply:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
     needs: terraform-plan
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -146,7 +152,7 @@ jobs:
       - name: Download Terraform plan artifact
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-prod
+          name: tfplan-${{ matrix.environment }}
           path: ./terraform/ressource-group
 
       - name: Terraform apply
