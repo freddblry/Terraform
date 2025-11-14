@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev, prod]
+        environment: [dev]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev, prod]
+        environment: [dev]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev, prod]
+        environment: [dev]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev, prod]
+        environment: [dev]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -102,7 +102,7 @@ jobs:
       - name: Terraform plan
         id: plan
         run: |
-          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example" > plan.out
+          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example" 
           cat plan.out
 
       - name: Upload Terraform plan
