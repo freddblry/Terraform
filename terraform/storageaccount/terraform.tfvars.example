@@ -1,0 +1,13 @@
+prefix                = "tf"
+environment           = "dev"
+location              = "eastus"
+storage_account_tier  = "Standard"
+storage_account_replication_type = "LRS"
+tags = {
+  Project = "TerraformStorageAccount"
+  Owner   = "your-name"
+}
+
+backend_resource_group = "tfstate-rg"
+backend_storage_account = "tfstatestorageacct"
+backend_container = "tfstate"
