@@ -4,20 +4,18 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch: {}
 
 jobs:
   terraform-fmt:
-    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
-    env:
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        environment: [dev, prod]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -31,12 +29,11 @@ jobs:
         run: terraform fmt -check -recursive
 
   terraform-validate:
-    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
     needs: terraform-fmt
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -58,11 +55,10 @@ jobs:
         run: terraform validate
 
   terraform-tfsec-scan:
-    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -75,18 +71,17 @@ jobs:
         run: tfsec . --out=tfsec-result.json --format=json
 
       - name: Upload tfsec results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfsec-results-${{ matrix.environment }}
           path: tfsec-result.json
 
   terraform-plan:
-    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
     needs: [terraform-validate, terraform-tfsec-scan]
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -111,7 +106,7 @@ jobs:
           cat plan.out
 
       - name: Upload Terraform plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.environment }}
           path: tfplan
@@ -146,7 +141,7 @@ jobs:
           terraform_version: 1.5.2
 
       - name: Download Terraform plan artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tfplan-prod
           path: ./
