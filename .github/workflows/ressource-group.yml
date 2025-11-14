@@ -35,8 +35,8 @@ jobs:
         with:
           terraform_version: 1.5.2
 
-      - name: Terraform init -upgrade input=false
-        run: terraform init -upgrade input=false
+      - name: Terraform init -upgrade 
+        run: terraform init -upgrade 
         working-directory: ./terraform/ressource-group
 
       - name: Terraform validate
@@ -75,8 +75,8 @@ jobs:
         with:
           terraform_version: 1.5.2
 
-      - name: Terraform init -upgrade input=false
-        run: terraform init -upgrade input=false
+      - name: Terraform init -upgrade 
+        run: terraform init -upgrade
         working-directory: ./terraform/ressource-group
 
       - name: Terraform plan
