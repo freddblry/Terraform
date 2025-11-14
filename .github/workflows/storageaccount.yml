@@ -1,0 +1,83 @@
+name: 'Terraform CI/CD'
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - staging
+  pull_request:
+    branches:
+      - main
+      - dev
+      - staging
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, staging, prod]
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.3.7
+        cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+    - name: Terraform fmt check
+      id: fmt
+      run: |
+        terraform fmt -check -recursive
+
+    - name: Terraform init
+      id: init
+      run: terraform init
+
+    - name: Terraform validate
+      id: validate
+      run: terraform validate
+
+    - name: Terraform security scan (tfsec)
+      uses: aquasecurity/tfsec-action@v1
+      with:
+        tfsec_version: latest
+
+    - name: Terraform plan
+      id: plan
+      run: |
+        terraform plan -out=tfplan -input=false
+      continue-on-error: false
+
+    - name: Upload plan artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: tfplan-${{ matrix.environment }}
+        path: tfplan
+
+    - name: Comment PR with plan result
+      if: github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        path: plan.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        terraform show -no-color tfplan > plan.txt
+
+    - name: Terraform apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve tfplan
