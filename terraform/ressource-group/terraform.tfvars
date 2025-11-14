@@ -4,5 +4,5 @@ environment         = "dev"
 project_name        = "terraform-azure-rg"
 tags = {
   Owner       = "team@example.com"
-  CostCenter  = "12345"
+  CostCenter  = "12334455"
 }
