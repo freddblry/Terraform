@@ -11,11 +11,10 @@ on:
 
 jobs:
   terraform-fmt:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -27,13 +26,14 @@ jobs:
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive
+        working-directory: ./terraform/ressource-group
 
   terraform-validate:
     needs: terraform-fmt
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -50,15 +50,17 @@ jobs:
 
       - name: Terraform init
         run: terraform init
+        working-directory: ./terraform/ressource-group
 
       - name: Terraform validate
         run: terraform validate
+        working-directory: ./terraform/ressource-group
 
   terraform-tfsec-scan:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -68,7 +70,7 @@ jobs:
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
 
       - name: Run tfsec security scan
-        run: tfsec . --out=tfsec-result.json --format=json
+        run: tfsec ./terraform/ressource-group --out=tfsec-result.json --format=json
 
       - name: Upload tfsec results
         uses: actions/upload-artifact@v4
@@ -81,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, prod]
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -98,18 +100,19 @@ jobs:
 
       - name: Terraform init
         run: terraform init
+        working-directory: ./terraform/ressource-group
 
       - name: Terraform plan
         id: plan
         run: |
-          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example" 
-          cat plan.out
+          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example"
+        working-directory: ./terraform/ressource-group
 
       - name: Upload Terraform plan
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.environment }}
-          path: tfplan
+          path: ./terraform/ressource-group/tfplan
 
       - name: Comment PR with plan
         if: github.event_name == 'pull_request'
@@ -144,7 +147,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-prod
-          path: ./
+          path: ./terraform/ressource-group
 
       - name: Terraform apply
         run: terraform apply -auto-approve ./tfplan
+        working-directory: ./terraform/ressource-group
