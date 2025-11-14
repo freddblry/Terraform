@@ -1,0 +1,8 @@
+project_name       = "rg-project"
+resource_group_name = "rg-project-dev-rg"
+location           = "France Central"
+environment        = "dev"
+tags = {
+  Owner       = "equipe-infra"
+  CostCenter  = "12345"
+}
