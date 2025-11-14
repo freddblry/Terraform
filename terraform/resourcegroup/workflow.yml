@@ -1,0 +1,159 @@
+name: Terraform Azure CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    # Exclure les pushes qui ne sont pas merges (ex: commit direct) pour apply
+    # Mais run fmt, validate, plan sur toute push
+  workflow_dispatch:
+
+jobs:
+  fmt:
+    name: Terraform Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/resourcegroup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ">=1.3.0"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+  validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    needs: [fmt]
+    defaults:
+      run:
+        working-directory: terraform/resourcegroup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ">=1.3.0"
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Validate
+        run: terraform validate
+
+  tfsec:
+    name: Terraform Security Scan (tfsec)
+    runs-on: ubuntu-latest
+    needs: [validate]
+    defaults:
+      run:
+        working-directory: terraform/resourcegroup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install tfsec
+        run: |
+          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+      - name: Run tfsec
+        run: tfsec .
+
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: [tfsec]
+    defaults:
+      run:
+        working-directory: terraform/resourcegroup
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ">=1.3.0"
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -out=tfplan.binary
+
+      - name: Save plan artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan
+          path: terraform/resourcegroup/tfplan.binary
+
+      - name: Comment PR with plan
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: |
+            terraform/resourcegroup/tfplan.binary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: terraform/resourcegroup
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ">=1.3.0"
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan
+          path: terraform/resourcegroup
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan.binary
+
+  cache:
+    name: Cache Terraform plugins
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            terraform/resourcegroup/.terraform/plugins
+          key: ${{ runner.os }}-terraform-${{ hashFiles('terraform/resourcegroup/*.tf') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
