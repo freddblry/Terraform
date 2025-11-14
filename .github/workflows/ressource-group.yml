@@ -1,0 +1,155 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  terraform-fmt:
+    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.2
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+  terraform-validate:
+    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
+    needs: terraform-fmt
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.2
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+  terraform-tfsec-scan:
+    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install tfsec
+        run: |
+          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+      - name: Run tfsec security scan
+        run: tfsec . --out=tfsec-result.json --format=json
+
+      - name: Upload tfsec results
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfsec-results-${{ matrix.environment }}
+          path: tfsec-result.json
+
+  terraform-plan:
+    if: github.run_number == 1 || github.event_name == 'workflow_dispatch'
+    needs: [terraform-validate, terraform-tfsec-scan]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.2
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan -out=tfplan -var="environment=${{ matrix.environment }}" -var="resource_group_name=rg-${{ matrix.environment }}-example" > plan.out
+          cat plan.out
+
+      - name: Upload Terraform plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: tfplan
+
+      - name: Comment PR with plan
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          header: terraform plan ${{ matrix.environment }}
+          message: |
+            ```
+            ${{ steps.plan.outputs.stdout }}
+            ```
+
+  terraform-apply:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.2
+
+      - name: Download Terraform plan artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-prod
+          path: ./
+
+      - name: Terraform apply
+        run: terraform apply -auto-approve ./tfplan
