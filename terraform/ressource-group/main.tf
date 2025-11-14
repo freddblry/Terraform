@@ -7,7 +7,6 @@ resource "azurerm_resource_group" "rg" {
       Environment = var.environment
       ManagedBy   = "terraform"
       Project     = var.project_name
-    },
-    var.tags
+    }
   )
 }
